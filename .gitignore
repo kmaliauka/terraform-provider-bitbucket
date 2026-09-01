@@ -38,3 +38,6 @@ terraform-provider-bitbucket
 # Test exclusions
 !command/test-fixtures/**/*.tfstate
 !command/test-fixtures/**/.terraform/
+
+bin/
+tofurc
