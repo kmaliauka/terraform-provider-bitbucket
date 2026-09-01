@@ -9,7 +9,85 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"encoding/json"
 )
+
+func TestBranchingModelUnmarshalStringDefaultBranchDeletion(t *testing.T) {
+	cases := []struct {
+		name        string
+		rawJSON     string
+		expected    bool
+		expectedNil bool
+	}{
+		{
+			name: "string false",
+			rawJSON: `{
+				"development": {"name": "dev", "use_mainbranch": false},
+				"production": {"name": "master", "use_mainbranch": false},
+				"default_branch_deletion": "false"
+			}`,
+			expected: false,
+		},
+		{
+			name: "string true",
+			rawJSON: `{
+				"development": {"name": "dev", "use_mainbranch": false},
+				"production": {"name": "master", "use_mainbranch": false},
+				"default_branch_deletion": "true"
+			}`,
+			expected: true,
+		},
+		{
+			name: "native bool false",
+			rawJSON: `{
+				"development": {"name": "dev", "use_mainbranch": false},
+				"production": {"name": "master", "use_mainbranch": false},
+				"default_branch_deletion": false
+			}`,
+			expected: false,
+		},
+		{
+			name: "native bool true",
+			rawJSON: `{
+				"development": {"name": "dev", "use_mainbranch": false},
+				"production": {"name": "master", "use_mainbranch": false},
+				"default_branch_deletion": true
+			}`,
+			expected: true,
+		},
+		{
+			name: "null",
+			rawJSON: `{
+				"development": {"name": "dev", "use_mainbranch": false},
+				"production": {"name": "master", "use_mainbranch": false},
+				"default_branch_deletion": null
+			}`,
+			expectedNil: true,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			var bm BranchingModel
+			if err := json.Unmarshal([]byte(tc.rawJSON), &bm); err != nil {
+				t.Fatalf("failed to unmarshal: %v", err)
+			}
+			if tc.expectedNil {
+				if bm.DefaultBranchDeletion != nil {
+					t.Fatalf("expected DefaultBranchDeletion to be nil, got: %v", bm.DefaultBranchDeletion.Bool())
+				}
+				return
+			}
+			if bm.DefaultBranchDeletion == nil {
+				t.Fatal("expected DefaultBranchDeletion to be non-nil")
+			}
+			if bm.DefaultBranchDeletion.Bool() != tc.expected {
+				t.Fatalf("expected %v, got %v", tc.expected, bm.DefaultBranchDeletion.Bool())
+			}
+		})
+	}
+}
 
 func TestAccBitbucketBranchingModel_basic(t *testing.T) {
 	var branchRestriction BranchingModel
