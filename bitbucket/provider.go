@@ -120,8 +120,12 @@ func Provider() *schema.Provider {
 func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	authCtx := context.Background()
 
+	retryTransport := NewRetryTransport(http.DefaultTransport)
+
 	client := &Client{
-		HTTPClient: &http.Client{},
+		HTTPClient: &http.Client{
+			Transport: retryTransport,
+		},
 	}
 
 	if username, ok := d.GetOk("username"); ok {
@@ -168,6 +172,9 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	}
 
 	conf := bitbucket.NewConfiguration()
+	conf.HTTPClient = &http.Client{
+		Transport: retryTransport,
+	}
 	apiClient := ProviderConfig{
 		ApiClient:   bitbucket.NewAPIClient(conf),
 		AuthContext: authCtx,
