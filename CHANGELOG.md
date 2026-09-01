@@ -1,3 +1,27 @@
+## Unreleased (noogadev fork)
+
+### Breaking changes
+
+* `bitbucket_branch_restriction`: `users` now addresses workspace members by display name or by account UUID in braces. Bitbucket deprecated usernames and stopped returning them, so a configuration listing usernames must be updated. Display names are resolved to UUIDs when the restriction is written, and state stores the display name the API reports.
+* `bitbucket_branch_restriction`: `groups` are finally written to state. The previous `d.Set` call failed silently and left the set empty, so the first plan after upgrading reports a diff. `owner` is read from the group's workspace slug.
+
+### Bug fixes
+
+* `bitbucket_deployment_variable`: paginate the variable lookup. Bitbucket returns ten variables per page, so any variable past the first page was reported as deleted and recreated on every apply ([#254](https://github.com/DrFaust92/terraform-provider-bitbucket/issues/254)).
+* `bitbucket_branching_model` and `bitbucket_project_branching_model`: accept `default_branch_deletion` as a string, a boolean, `0`/`1`, or null ([#234](https://github.com/DrFaust92/terraform-provider-bitbucket/issues/234)).
+* Return an error instead of panicking when a request fails at the transport layer. The response was dereferenced without checking the error in `Client.Do` and in seven read functions ([#211](https://github.com/DrFaust92/terraform-provider-bitbucket/issues/211)).
+* `bitbucket_branching_model`: no longer clears `default_branch_deletion` when the API omits the field.
+
+### Enhancements
+
+* Rate limiting: a 429 is retried after the delay Bitbucket reports in `X-RateLimit-Reset` rather than a guessed backoff, and the window is shared across every in-flight request so parallel resources wait once instead of each rediscovering it. Waiting is capped at 120 seconds, after which the error names the reset time and the remedy.
+* `bitbucket_branch_restriction`: the workspace member index is fetched once per workspace per run instead of once per resource.
+* Report `d.Set` failures as diagnostics in the read functions for branch restrictions, branching models, and deployment variables, instead of discarding them.
+
+### Documentation
+
+* `bitbucket_project_branching_model`: `development` is documented as required, matching the schema ([#224](https://github.com/DrFaust92/terraform-provider-bitbucket/issues/224)).
+
 ## 1.3.0 (March 15, 2021)
 
 This release contains the changes to upstream repo that were never released.
