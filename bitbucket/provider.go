@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/DrFaust92/bitbucket-go-client"
-	"github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	oauth2bitbucket "golang.org/x/oauth2/bitbucket"
 	oauth2clientcreds "golang.org/x/oauth2/clientcredentials"
@@ -21,6 +20,7 @@ type ProviderConfig struct {
 type Clients struct {
 	genClient  ProviderConfig
 	httpClient Client
+	members    *workspaceMemberCache
 }
 
 // Provider will create the necessary terraform provider to talk to the
@@ -118,19 +118,19 @@ func Provider() *schema.Provider {
 	}
 }
 
+// newHTTPClient builds the HTTP client shared by the internal and the
+// generated Bitbucket clients. Sharing it means a rate limit window discovered
+// by any one request pauses all of them.
 func newHTTPClient() *http.Client {
-	client := retryablehttp.NewClient()
-	client.Logger = nil
-	client.RetryMax = 10
-	client.CheckRetry = func(ctx context.Context, response *http.Response, err error) (bool, error) {
-		if err != nil {
-			return false, err
-		}
-		return response != nil && response.StatusCode == http.StatusTooManyRequests, nil
+	return &http.Client{
+		Transport: &rateLimitTransport{
+			base:        http.DefaultTransport,
+			gate:        newRateLimitGate(),
+			maxAttempts: rateLimitMaxAttempts,
+			maxWait:     rateLimitMaxWait,
+			jitter:      jitterUpTo,
+		},
 	}
-	client.Backoff = retryablehttp.RateLimitLinearJitterBackoff
-	client.ErrorHandler = retryablehttp.PassthroughErrorHandler
-	return client.StandardClient()
 }
 
 func providerConfigure(d *schema.ResourceData) (interface{}, error) {
@@ -195,6 +195,7 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	clients := Clients{
 		genClient:  apiClient,
 		httpClient: *client,
+		members:    newWorkspaceMemberCache(),
 	}
 
 	return clients, nil
