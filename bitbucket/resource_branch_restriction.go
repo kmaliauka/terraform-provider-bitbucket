@@ -136,18 +136,7 @@ func resourceBranchRestriction() *schema.Resource {
 	}
 }
 
-func createBranchRestriction(d *schema.ResourceData) *bitbucket.Branchrestriction {
-
-	users := make([]bitbucket.Account, 0, d.Get("users").(*schema.Set).Len())
-
-	for _, item := range d.Get("users").(*schema.Set).List() {
-		account := bitbucket.Account{
-			Username: item.(string),
-		}
-
-		users = append(users, account)
-	}
-
+func createBranchRestriction(d *schema.ResourceData, users []bitbucket.Account) *bitbucket.Branchrestriction {
 	groups := make([]bitbucket.Group, 0, d.Get("groups").(*schema.Set).Len())
 
 	for _, item := range d.Get("groups").(*schema.Set).List() {
@@ -190,10 +179,16 @@ func createBranchRestriction(d *schema.ResourceData) *bitbucket.Branchrestrictio
 func resourceBranchRestrictionsCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	c := m.(Clients).genClient
 	brApi := c.ApiClient.BranchRestrictionsApi
-	branchRestriction := createBranchRestriction(d)
 
 	repo := d.Get("repository").(string)
 	workspace := d.Get("owner").(string)
+
+	users, err := m.(Clients).members.resolve(c, workspace, d.Get("users").(*schema.Set))
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	branchRestriction := createBranchRestriction(d, users)
+
 	branchRestrictionReq, res, err := brApi.RepositoriesWorkspaceRepoSlugBranchRestrictionsPost(c.AuthContext, *branchRestriction, repo, workspace)
 	if err := handleClientError(res, err); err != nil {
 		return diag.FromErr(err)
@@ -225,51 +220,73 @@ func resourceBranchRestrictionsRead(ctx context.Context, d *schema.ResourceData,
 	d.Set("kind", brRes.Kind)
 	d.Set("pattern", brRes.Pattern)
 	d.Set("value", brRes.Value)
-	d.Set("users", flattenBranchRestrictionUsers(brRes.Users))
-	d.Set("groups", flattenBranchRestrictionGroups(brRes.Groups))
+	if err := d.Set("users", flattenBranchRestrictionUsers(brRes.Users)); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("groups", flattenBranchRestrictionGroups(brRes.Groups)); err != nil {
+		return diag.FromErr(err)
+	}
 	d.Set("branch_type", brRes.BranchType)
 	d.Set("branch_match_kind", brRes.BranchMatchKind)
 
 	return nil
 }
 
+// flattenBranchRestrictionUsers stores the display name Bitbucket returns,
+// which is the identifier the users argument accepts. Bitbucket deprecated
+// username and no longer returns it, so the UUID is the only fallback left for
+// an account with no display name.
 func flattenBranchRestrictionUsers(accounts []bitbucket.Account) []string {
 	users := make([]string, 0, len(accounts))
+
 	for _, acc := range accounts {
-		if acc.Uuid != "" {
-			users = append(users, acc.Uuid)
-		} else if acc.Username != "" {
-			users = append(users, acc.Username)
-		} else if acc.DisplayName != "" {
+		switch {
+		case acc.DisplayName != "":
 			users = append(users, acc.DisplayName)
+		case acc.Uuid != "":
+			users = append(users, acc.Uuid)
 		}
 	}
+
 	return users
 }
 
+// flattenBranchRestrictionGroups resolves the workspace slug that the owner
+// argument expects. A group's owner account carries a human readable display
+// name rather than a slug, so the workspace object is preferred over it.
 func flattenBranchRestrictionGroups(groups []bitbucket.Group) []interface{} {
 	out := make([]interface{}, 0, len(groups))
+
 	for _, g := range groups {
 		owner := ""
-		if g.Owner != nil {
-			if g.Owner.Username != "" {
-				owner = g.Owner.Username
-			} else if g.Owner.DisplayName != "" {
-				owner = g.Owner.DisplayName
-			}
+
+		switch {
+		case g.Workspace != nil && g.Workspace.Slug != "":
+			owner = g.Workspace.Slug
+		case g.FullSlug != "":
+			owner, _, _ = strings.Cut(g.FullSlug, ":")
+		case g.Owner != nil && g.Owner.Username != "":
+			owner = g.Owner.Username
 		}
+
 		out = append(out, map[string]interface{}{
 			"owner": owner,
 			"slug":  g.Slug,
 		})
 	}
+
 	return out
 }
 
 func resourceBranchRestrictionsUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	c := m.(Clients).genClient
 	brApi := c.ApiClient.BranchRestrictionsApi
-	branchRestriction := createBranchRestriction(d)
+
+	users, err := m.(Clients).members.resolve(c, d.Get("owner").(string), d.Get("users").(*schema.Set))
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	branchRestriction := createBranchRestriction(d, users)
 
 	_, res, err := brApi.RepositoriesWorkspaceRepoSlugBranchRestrictionsIdPut(c.AuthContext,
 		*branchRestriction, url.PathEscape(d.Id()),

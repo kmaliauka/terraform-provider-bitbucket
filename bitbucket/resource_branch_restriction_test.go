@@ -155,24 +155,16 @@ func testAccCheckBitbucketBranchRestrictionImportStateIdFunc(resourceName string
 
 func TestFlattenBranchRestrictionUsers(t *testing.T) {
 	accounts := []bitbucket.Account{
-		{
-			Uuid:     "{11111111-2222-3333-4444-555555555555}",
-			Username: "user1",
-		},
-		{
-			Uuid:        "{22222222-3333-4444-5555-666666666666}",
-			DisplayName: "nick2",
-		},
-		{
-			Username: "user3",
-		},
+		{Uuid: "{11111111-1111-1111-1111-111111111111}", DisplayName: "Jane Doe"},
+		{Uuid: "{22222222-2222-2222-2222-222222222222}"}, // no display name
+		{DisplayName: "John Smith"},
 	}
 
 	result := flattenBranchRestrictionUsers(accounts)
 	expected := []string{
-		"{11111111-2222-3333-4444-555555555555}",
-		"{22222222-3333-4444-5555-666666666666}",
-		"user3",
+		"Jane Doe",
+		"{22222222-2222-2222-2222-222222222222}",
+		"John Smith",
 	}
 
 	if len(result) != len(expected) {
@@ -187,29 +179,29 @@ func TestFlattenBranchRestrictionUsers(t *testing.T) {
 
 func TestFlattenBranchRestrictionGroups(t *testing.T) {
 	groups := []bitbucket.Group{
-		{
-			Slug: "devops",
-			Owner: &bitbucket.Account{
-				Username: "owner1",
-			},
-		},
-		{
-			Slug: "backend",
-		},
+		// The workspace is the reliable source for the slug the schema wants;
+		// the owner account carries a display name, not a slug.
+		{Slug: "devops", Workspace: &bitbucket.Workspace{Slug: "noogadev"}, Owner: &bitbucket.Account{DisplayName: "Nooga Dev"}},
+		{Slug: "backend", FullSlug: "noogadev:backend"},
+		{Slug: "legacy", Owner: &bitbucket.Account{Username: "noogadev"}},
+		{Slug: "orphan"},
 	}
 
 	result := flattenBranchRestrictionGroups(groups)
-	if len(result) != 2 {
-		t.Fatalf("expected 2 groups, got %d", len(result))
+	expected := []map[string]interface{}{
+		{"owner": "noogadev", "slug": "devops"},
+		{"owner": "noogadev", "slug": "backend"},
+		{"owner": "noogadev", "slug": "legacy"},
+		{"owner": "", "slug": "orphan"},
 	}
 
-	g1 := result[0].(map[string]interface{})
-	if g1["slug"] != "devops" || g1["owner"] != "owner1" {
-		t.Errorf("unexpected g1: %+v", g1)
+	if len(result) != len(expected) {
+		t.Fatalf("expected %d groups, got %d", len(expected), len(result))
 	}
-
-	g2 := result[1].(map[string]interface{})
-	if g2["slug"] != "backend" || g2["owner"] != "" {
-		t.Errorf("unexpected g2: %+v", g2)
+	for i, want := range expected {
+		got := result[i].(map[string]interface{})
+		if got["owner"] != want["owner"] || got["slug"] != want["slug"] {
+			t.Errorf("at index %d: got %+v, want %+v", i, got, want)
+		}
 	}
 }
