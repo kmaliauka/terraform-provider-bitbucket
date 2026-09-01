@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/DrFaust92/bitbucket-go-client"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
@@ -149,5 +150,66 @@ func testAccCheckBitbucketBranchRestrictionImportStateIdFunc(resourceName string
 			return "", fmt.Errorf("Not found: %s", resourceName)
 		}
 		return fmt.Sprintf("%s/%s/%s", rs.Primary.Attributes["owner"], rs.Primary.Attributes["repository"], rs.Primary.ID), nil
+	}
+}
+
+func TestFlattenBranchRestrictionUsers(t *testing.T) {
+	accounts := []bitbucket.Account{
+		{
+			Uuid:     "{11111111-2222-3333-4444-555555555555}",
+			Username: "user1",
+		},
+		{
+			Uuid:        "{22222222-3333-4444-5555-666666666666}",
+			DisplayName: "nick2",
+		},
+		{
+			Username: "user3",
+		},
+	}
+
+	result := flattenBranchRestrictionUsers(accounts)
+	expected := []string{
+		"{11111111-2222-3333-4444-555555555555}",
+		"{22222222-3333-4444-5555-666666666666}",
+		"user3",
+	}
+
+	if len(result) != len(expected) {
+		t.Fatalf("expected length %d, got %d", len(expected), len(result))
+	}
+	for i := range expected {
+		if result[i] != expected[i] {
+			t.Errorf("at index %d: expected %q, got %q", i, expected[i], result[i])
+		}
+	}
+}
+
+func TestFlattenBranchRestrictionGroups(t *testing.T) {
+	groups := []bitbucket.Group{
+		{
+			Slug: "devops",
+			Owner: &bitbucket.Account{
+				Username: "owner1",
+			},
+		},
+		{
+			Slug: "backend",
+		},
+	}
+
+	result := flattenBranchRestrictionGroups(groups)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 groups, got %d", len(result))
+	}
+
+	g1 := result[0].(map[string]interface{})
+	if g1["slug"] != "devops" || g1["owner"] != "owner1" {
+		t.Errorf("unexpected g1: %+v", g1)
+	}
+
+	g2 := result[1].(map[string]interface{})
+	if g2["slug"] != "backend" || g2["owner"] != "" {
+		t.Errorf("unexpected g2: %+v", g2)
 	}
 }

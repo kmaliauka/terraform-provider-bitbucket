@@ -225,12 +225,45 @@ func resourceBranchRestrictionsRead(ctx context.Context, d *schema.ResourceData,
 	d.Set("kind", brRes.Kind)
 	d.Set("pattern", brRes.Pattern)
 	d.Set("value", brRes.Value)
-	d.Set("users", brRes.Users)
-	d.Set("groups", brRes.Groups)
+	d.Set("users", flattenBranchRestrictionUsers(brRes.Users))
+	d.Set("groups", flattenBranchRestrictionGroups(brRes.Groups))
 	d.Set("branch_type", brRes.BranchType)
 	d.Set("branch_match_kind", brRes.BranchMatchKind)
 
 	return nil
+}
+
+func flattenBranchRestrictionUsers(accounts []bitbucket.Account) []string {
+	users := make([]string, 0, len(accounts))
+	for _, acc := range accounts {
+		if acc.Uuid != "" {
+			users = append(users, acc.Uuid)
+		} else if acc.Username != "" {
+			users = append(users, acc.Username)
+		} else if acc.DisplayName != "" {
+			users = append(users, acc.DisplayName)
+		}
+	}
+	return users
+}
+
+func flattenBranchRestrictionGroups(groups []bitbucket.Group) []interface{} {
+	out := make([]interface{}, 0, len(groups))
+	for _, g := range groups {
+		owner := ""
+		if g.Owner != nil {
+			if g.Owner.Username != "" {
+				owner = g.Owner.Username
+			} else if g.Owner.DisplayName != "" {
+				owner = g.Owner.DisplayName
+			}
+		}
+		out = append(out, map[string]interface{}{
+			"owner": owner,
+			"slug":  g.Slug,
+		})
+	}
+	return out
 }
 
 func resourceBranchRestrictionsUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
