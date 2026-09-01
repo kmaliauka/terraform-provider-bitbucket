@@ -2,8 +2,11 @@ package bitbucket
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
@@ -211,5 +214,57 @@ func testAccBitbucketDeploymentVariableImportStateIdFunc(resourceName string) re
 			return "", fmt.Errorf("Not found: %s", resourceName)
 		}
 		return fmt.Sprintf("%s/%s", rs.Primary.Attributes["deployment"], rs.Primary.ID), nil
+	}
+}
+
+func TestFindDeploymentVariableSecondPage(t *testing.T) {
+	var pages atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pages.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.URL.Query().Get("page") == "2" {
+			_, _ = io.WriteString(w, `{"page":2,"size":11,"values":[
+				{"uuid":"{wanted}","key":"LATE","value":"v","secured":false}
+			]}`)
+
+			return
+		}
+
+		_, _ = io.WriteString(w, `{"page":1,"size":11,"next":"?page=2","values":[
+			{"uuid":"{other}","key":"EARLY","value":"v","secured":false}
+		]}`)
+	}))
+	defer srv.Close()
+
+	got, err := findDeploymentVariable(testProviderConfig(t, srv.URL), "ws", "repo", "{deploy}", "{wanted}")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("a variable on the second page was reported as missing")
+	}
+	if got.Key != "LATE" {
+		t.Fatalf("key = %q, want LATE", got.Key)
+	}
+	if pages.Load() != 2 {
+		t.Fatalf("pages fetched = %d, want 2", pages.Load())
+	}
+}
+
+func TestFindDeploymentVariableMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"page":1,"size":1,"values":[{"uuid":"{other}","key":"X"}]}`)
+	}))
+	defer srv.Close()
+
+	got, err := findDeploymentVariable(testProviderConfig(t, srv.URL), "ws", "repo", "{deploy}", "{missing}")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil, got %+v", got)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/DrFaust92/bitbucket-go-client"
+	"github.com/antihax/optional"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -97,7 +98,6 @@ func resourceDeploymentVariableCreate(ctx context.Context, d *schema.ResourceDat
 
 func resourceDeploymentVariableRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	c := m.(Clients).genClient
-	pipeApi := c.ApiClient.PipelinesApi
 
 	repository, deployment := parseDeploymentId(d.Get("deployment").(string))
 	workspace, repoSlug, err := deployVarId(repository)
@@ -105,31 +105,9 @@ func resourceDeploymentVariableRead(ctx context.Context, d *schema.ResourceData,
 		return diag.FromErr(err)
 	}
 
-	rvRes, res, err := pipeApi.GetDeploymentVariables(c.AuthContext, workspace, repoSlug, deployment, nil)
-
-	if res != nil && res.StatusCode == http.StatusNotFound {
-		log.Printf("[WARN] Deployment Variable (%s) not found, removing from state", d.Id())
-		d.SetId("")
-		return nil
-	}
-
-	if err := handleClientError(res, err); err != nil {
+	deployVar, err := findDeploymentVariable(c, workspace, repoSlug, deployment, d.Id())
+	if err != nil {
 		return diag.FromErr(err)
-	}
-
-	if rvRes.Size < 1 {
-		log.Printf("[WARN] Deployment Variable (%s) not found, removing from state", d.Id())
-		d.SetId("")
-		return nil
-	}
-
-	var deployVar *bitbucket.DeploymentVariable
-
-	for _, rv := range rvRes.Values {
-		if rv.Uuid == d.Id() {
-			deployVar = &rv
-			break
-		}
 	}
 
 	if deployVar == nil {
@@ -138,17 +116,60 @@ func resourceDeploymentVariableRead(ctx context.Context, d *schema.ResourceData,
 		return nil
 	}
 
-	d.Set("key", deployVar.Key)
-	d.Set("uuid", deployVar.Uuid)
-	d.Set("secured", deployVar.Secured)
+	if err := d.Set("key", deployVar.Key); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("uuid", deployVar.Uuid); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("secured", deployVar.Secured); err != nil {
+		return diag.FromErr(err)
+	}
 
-	if !deployVar.Secured {
-		d.Set("value", deployVar.Value)
-	} else {
-		d.Set("value", d.Get("value").(string))
+	// A secured value is write-only: the API never returns it, so the value
+	// already in state is the only copy there is.
+	value := deployVar.Value
+	if deployVar.Secured {
+		value = d.Get("value").(string)
+	}
+	if err := d.Set("value", value); err != nil {
+		return diag.FromErr(err)
 	}
 
 	return nil
+}
+
+// findDeploymentVariable walks every page of a deployment's variables.
+// Bitbucket returns ten per page, so a single unpaginated call silently
+// reports anything past the first page as deleted (upstream issue #254).
+func findDeploymentVariable(c ProviderConfig, workspace, repoSlug, deployment, uuid string) (*bitbucket.DeploymentVariable, error) {
+	options := bitbucket.PipelinesApiGetDeploymentVariablesOpts{}
+
+	// The page number is tracked here rather than read back from the response,
+	// which omits it on some payloads and would otherwise loop forever.
+	for page := int32(1); ; page++ {
+		vars, res, err := c.ApiClient.PipelinesApi.GetDeploymentVariables(c.AuthContext, workspace, repoSlug, deployment, &options)
+
+		if res != nil && res.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+
+		if err := handleClientError(res, err); err != nil {
+			return nil, err
+		}
+
+		for _, v := range vars.Values {
+			if v.Uuid == uuid {
+				return &v, nil
+			}
+		}
+
+		if vars.Next == "" {
+			return nil, nil
+		}
+
+		options.Page = optional.NewInt32(page + 1)
+	}
 }
 
 func resourceDeploymentVariableUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
