@@ -86,6 +86,13 @@ func (c *Client) Do(method, endpoint string, payload *bytes.Buffer, contentType 
 
 	resp, err := c.HTTPClient.Do(req)
 	log.Printf("[DEBUG] Resp: %v Err: %v", resp, err)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("no response from %s %s", method, absoluteendpoint)
+	}
+
 	if resp.StatusCode >= 400 || resp.StatusCode < 200 {
 		apiError := Error{
 			StatusCode: resp.StatusCode,
@@ -102,6 +109,10 @@ func (c *Client) Do(method, endpoint string, payload *bytes.Buffer, contentType 
 		err = json.Unmarshal(body, &apiError)
 		if err != nil {
 			apiError.APIError.Message = string(body)
+		}
+
+		if hint := rateLimitHint(resp); hint != "" {
+			apiError.APIError.Message = hint
 		}
 
 		return resp, error(apiError)

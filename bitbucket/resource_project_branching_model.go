@@ -160,15 +160,19 @@ func resourceProjectBranchingModelsRead(ctx context.Context, d *schema.ResourceD
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	branchingModelsReq, _ := client.Get(fmt.Sprintf("2.0/workspaces/%s/projects/%s/branching-model/settings", workspace, repo))
+	branchingModelsReq, err := client.Get(fmt.Sprintf("2.0/workspaces/%s/projects/%s/branching-model/settings", workspace, repo))
 
-	if branchingModelsReq.StatusCode == http.StatusNotFound {
+	if branchingModelsReq != nil && branchingModelsReq.StatusCode == http.StatusNotFound {
 		log.Printf("[WARN] Project Branching Model (%s) not found, removing from state", d.Id())
 		d.SetId("")
 		return nil
 	}
 
-	if branchingModelsReq.Body == nil {
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	if branchingModelsReq == nil || branchingModelsReq.Body == nil {
 		return diag.Errorf("error getting Project Branching Model (%s): empty response", d.Id())
 	}
 

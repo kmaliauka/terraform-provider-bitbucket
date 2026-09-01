@@ -189,15 +189,19 @@ func resourceBranchingModelsRead(ctx context.Context, d *schema.ResourceData, m 
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	branchingModelsReq, _ := client.Get(fmt.Sprintf("2.0/repositories/%s/%s/branching-model/settings", owner, repo))
+	branchingModelsReq, err := client.Get(fmt.Sprintf("2.0/repositories/%s/%s/branching-model/settings", owner, repo))
 
-	if branchingModelsReq.StatusCode == http.StatusNotFound {
+	if branchingModelsReq != nil && branchingModelsReq.StatusCode == http.StatusNotFound {
 		log.Printf("[WARN] Branching Model (%s) not found, removing from state", d.Id())
 		d.SetId("")
 		return nil
 	}
 
-	if branchingModelsReq.Body == nil {
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	if branchingModelsReq == nil || branchingModelsReq.Body == nil {
 		return diag.Errorf("error getting Branching Model (%s): empty response", d.Id())
 	}
 
@@ -226,10 +230,12 @@ func resourceBranchingModelsRead(ctx context.Context, d *schema.ResourceData, m 
 
 	d.Set("owner", owner)
 	d.Set("repository", repo)
+	// A bool attribute cannot hold "absent", so when the API omits the field
+	// the value already in state is left untouched rather than forced to false.
 	if branchingModel.DefaultBranchDeletion != nil {
-		d.Set("default_branch_deletion", branchingModel.DefaultBranchDeletion.Bool())
-	} else {
-		d.Set("default_branch_deletion", nil)
+		if err := d.Set("default_branch_deletion", branchingModel.DefaultBranchDeletion.Bool()); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 	d.Set("development", flattenBranchModel(branchingModel.Development, "development"))
 	d.Set("branch_type", flattenBranchTypes(branchingModel.BranchTypes))
