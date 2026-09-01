@@ -14,6 +14,9 @@
 
 ### Enhancements
 
+* `bitbucket_workspace_members`: expose `account_id` and `nickname`. `account_id` is the identifier the Atlassian Administration API also reports, which makes it possible to join a Bitbucket user to their Atlassian account without matching on names. The data source now reads the API directly rather than through the generated client, whose account model drops both fields.
+* `bitbucket_workspace_members`: `display_name` now returns the display name. It previously returned the nickname, which Bitbucket allows to differ. `username` keeps returning the display name so existing configurations are unaffected, and is marked deprecated.
+
 * Rate limiting: a 429 is retried after the delay Bitbucket reports in `X-RateLimit-Reset` rather than a guessed backoff, and the window is shared across every in-flight request so parallel resources wait once instead of each rediscovering it. Waiting is capped at 120 seconds, after which the error names the reset time and the remedy.
 * `bitbucket_branch_restriction`: the workspace member index is fetched once per workspace per run instead of once per resource.
 * Report `d.Set` failures as diagnostics in the read functions for branch restrictions, branching models, and deployment variables, instead of discarding them.

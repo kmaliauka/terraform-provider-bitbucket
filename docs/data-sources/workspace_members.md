@@ -35,6 +35,8 @@ The following arguments are supported:
 
 ### Workspace Member
 
-* `uuid` - User UUID.
-* `username` - The Username.
-* `display_name` - The User display name.
+* `uuid` - User UUID, the identifier Bitbucket resources expect.
+* `account_id` - Atlassian account id. This is the same identifier the Atlassian Administration API reports, so it is the stable key for joining a Bitbucket user to their Atlassian account.
+* `display_name` - The user's display name.
+* `nickname` - The user's nickname. Bitbucket lets this differ from the display name, so neither is reliable as a join key.
+* `username` - Deprecated. Bitbucket no longer returns usernames; this carries the display name so that configurations written against earlier versions keep resolving. Use `display_name` instead.

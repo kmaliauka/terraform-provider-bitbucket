@@ -99,3 +99,26 @@ func dataReadGroupMembers(ctx context.Context, d *schema.ResourceData, m interfa
 
 	return nil
 }
+
+// flattenAccounts shapes the members of a workspace group.
+//
+// It keeps the historical field mapping of this data source: the group API is
+// the deprecated 1.0 endpoint, whose accounts carry a different set of fields
+// from 2.0 workspace members, so the two are flattened separately.
+func flattenAccounts(accounts []bitbucket.Account) []interface{} {
+	if len(accounts) == 0 {
+		return nil
+	}
+
+	tfList := make([]interface{}, 0, len(accounts))
+
+	for _, account := range accounts {
+		tfList = append(tfList, map[string]interface{}{
+			"uuid":         account.Uuid,
+			"username":     account.DisplayName,
+			"display_name": account.Username,
+		})
+	}
+
+	return tfList
+}
