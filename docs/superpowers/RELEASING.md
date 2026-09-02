@@ -5,12 +5,24 @@ Fork of `DrFaust92/terraform-provider-bitbucket`, published from
 
 ## Versioning
 
-Upstream is at `2.52.0`. The fork tags on top of it as `2.52.0-noogadev.N` so
-that the base version stays readable and an upstream rebase is obvious in the
-tag name.
+The fork releases as `2.53.0`, `2.53.1`, and so on: upstream is at `2.52.0`, so
+this reads as "one minor ahead of the base it was cut from" and leaves the whole
+`2.52.x` line to upstream.
 
-Registry namespace: `kmaliauka/bitbucket`. It is derived from the GitHub owner
-and the repository name, which must stay `terraform-provider-bitbucket`.
+Do **not** use a prerelease tag such as `2.52.0-noogadev.1`. It is valid semver,
+but OpenTofu will not select a prerelease under an ordinary constraint like
+`~> 2.52` — only an exact pin resolves it, which is a trap the first time
+someone writes a range.
+
+The namespace does the disambiguation anyway: `kmaliauka/bitbucket` cannot
+collide with `DrFaust92/bitbucket`, so the version number is free to be an
+ordinary one.
+
+Registry namespace `kmaliauka/bitbucket` is derived from the GitHub owner and the
+repository name, which must stay `terraform-provider-bitbucket`.
+
+Versions are immutable once indexed. The registry will not remove a release for a
+routine mistake — the fix is always to publish the next version.
 
 ## Signing key
 
@@ -52,8 +64,8 @@ gh secret set PASSPHRASE --body ""
 Then:
 
 ```bash
-git tag -a v2.52.0-noogadev.1 -m "noogadev fork: rate limiting, state contracts, workspace member account_id"
-git push origin v2.52.0-noogadev.1
+git tag -a v2.53.0 -m "noogadev fork: rate limiting, state contracts, workspace member account_id"
+git push origin v2.53.0
 ```
 
 ## Release by hand
@@ -77,18 +89,27 @@ goreleaser release --snapshot --clean --skip=sign
 
 ## Registry publication
 
-1. Sign in to the OpenTofu registry with the GitHub account that owns the fork.
-2. Add the provider; the repository must be public and named
-   `terraform-provider-bitbucket`.
-3. Upload `public.asc` as the signing key.
-4. Publish the tagged release.
+The OpenTofu registry has no web console. Both submissions are GitHub issues in
+[opentofu/registry](https://github.com/opentofu/registry), and both templates say
+the issue **must** be filed through the issue form UI in a browser — the
+automation reads the structured form fields, so `gh issue create` does not work.
+
+1. [Submit new Provider](https://github.com/opentofu/registry/issues/new?template=provider.yml) —
+   repository field: `kmaliauka/terraform-provider-bitbucket`.
+2. [Submit new Provider Signing Key](https://github.com/opentofu/registry/issues/new?template=provider_key.yml) —
+   namespace `kmaliauka`, provider name `bitbucket`, and the contents of
+   `public.asc` in the key field. Tick the public-membership and DCO boxes.
+
+Automation validates the submission and opens a pull request; maintainers merge
+it without further review when it matches the inclusion policy. Indexing a new
+version can take up to 30 minutes.
 
 After that:
 
 ```hcl
 bitbucket = {
   source  = "kmaliauka/bitbucket"
-  version = "2.52.0-noogadev.1"
+  version = "2.53.0"
 }
 ```
 
