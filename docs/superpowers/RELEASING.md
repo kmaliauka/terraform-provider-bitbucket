@@ -30,10 +30,16 @@ A dedicated key is used, so it can be revoked without touching the personal
 `kirill.malyavko` key.
 
 ```
-Fingerprint: 7EE05CE731D4179541C4691313B16D6BB04A749F
-UID:         Kirill Malyavko (terraform-provider-bitbucket release signing) <malyavkoki@gmail.com>
-Type:        RSA 4096, no expiry, no passphrase
+Primary key fingerprint: 7EE05CE731D4179541C4691313B16D6BB04A749F
+Signing subkey (used for actual signatures): 854311E0AC987B56FB90DB6BCF9CD37C3537A547
+UID:  Kirill Malyavko (terraform-provider-bitbucket release signing) <malyavkoki@gmail.com>
+Type: RSA 4096, no expiry, no passphrase
 ```
+
+`GPG_FINGERPRINT` for goreleaser is the **primary** fingerprint — `gpg --local-user`
+resolves it to the right signing subkey automatically. The subkey ID is only
+relevant when verifying a release by hand (`gpg --verify` reports it, not the
+primary).
 
 Exported to `~/bitbucket-provider-release-key/` (mode 600, outside the repo):
 
