@@ -54,5 +54,11 @@ The following arguments are supported:
 Branch Restrictions can be imported using their `owner/repo-name/branch-restriction-id` ID, e.g.
 
 ```sh
-terraform import bitbucket_branch_restriction.example my-account/my-repo/branch-rest-id
+terraform import bitbucket_branch_restriction.example my-account/my-repo/12345
 ```
+
+Bitbucket identifies a restriction by its `kind` together with `pattern`, or with
+`branch_type` when `branch_match_kind` is `branching_model` — not by that id. A
+restriction deleted and recreated in the UI comes back under a new id; the provider
+notices this on refresh and adopts the new id, so no manual import is needed in that
+case.

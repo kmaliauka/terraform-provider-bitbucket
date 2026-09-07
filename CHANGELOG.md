@@ -7,6 +7,11 @@
 
 ### Bug fixes
 
+* `bitbucket_branch_restriction`: a restriction deleted and recreated outside Terraform is re-adopted under its new id instead of being planned for creation. Bitbucket keys a restriction by kind together with pattern (or branch type), not by id, and rejects a duplicate with `409 ... already exists (id=...)`, so the previous behaviour produced a plan that could not be applied.
+* `bitbucket_branch_restriction`: creating a restriction that already exists now reports the existing id and the import command instead of surfacing the raw conflict. The existing restriction is resolved by its natural key, falling back to the id quoted in the conflict message only when that lookup finds nothing.
+* `bitbucket_branch_restriction`: destroying a restriction whose id changed outside Terraform no longer reports success while leaving the restriction in place. `Update` recovers the same way, which matters when running with `-refresh=false`.
+* `bitbucket_branch_restriction`: adopting a restriction that was recreated outside Terraform now emits a warning in the plan, rather than only a log line.
+
 * `bitbucket_deployment_variable`: paginate the variable lookup. Bitbucket returns ten variables per page, so any variable past the first page was reported as deleted and recreated on every apply ([#254](https://github.com/DrFaust92/terraform-provider-bitbucket/issues/254)).
 * `bitbucket_branching_model` and `bitbucket_project_branching_model`: accept `default_branch_deletion` as a string, a boolean, `0`/`1`, or null ([#234](https://github.com/DrFaust92/terraform-provider-bitbucket/issues/234)).
 * Return an error instead of panicking when a request fails at the transport layer. The response was dereferenced without checking the error in `Client.Do` and in seven read functions ([#211](https://github.com/DrFaust92/terraform-provider-bitbucket/issues/211)).
