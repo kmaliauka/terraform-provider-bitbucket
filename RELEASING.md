@@ -125,6 +125,7 @@ in CI:
 ```hcl
 provider_installation {
   dev_overrides {
+    "kmaliauka/bitbucket" = "/Users/kirillmalyavko/Terraform/terraform-provider-bitbucket/bin"
     "DrFaust92/bitbucket" = "/Users/kirillmalyavko/Terraform/terraform-provider-bitbucket/bin"
   }
   direct {}

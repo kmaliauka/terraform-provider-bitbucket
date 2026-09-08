@@ -1,61 +1,36 @@
-Bitbucket Terraform Provider
-==================
+# Bitbucket Terraform Provider
 
-- Website: https://www.terraform.io
-- [![Gitter chat](https://badges.gitter.im/hashicorp-terraform/Lobby.png)](https://gitter.im/hashicorp-terraform/Lobby)
-- Mailing list: [Google Groups](http://groups.google.com/group/terraform-tool)
+A fork of [DrFaust92/terraform-provider-bitbucket](https://github.com/DrFaust92/terraform-provider-bitbucket),
+published as `kmaliauka/bitbucket` in the OpenTofu registry.
 
-<img src="https://cdn.rawgit.com/hashicorp/terraform-website/master/content/source/assets/images/logo-hashicorp.svg" width="600px">
+The upstream provider is in maintenance mode, and several of the fixes below sit
+in pull requests that have not been merged. This fork exists to carry them, and
+is kept close enough to upstream that it can be rebased or retired if they land.
 
-Requirements
-------------
-
-- [Terraform](https://www.terraform.io/downloads.html) 1.x
-- [Go](https://golang.org/doc/install) 1.19 (to build the provider plugin)
-
-Building The Provider
----------------------
-
-Clone repository to: `$GOPATH/src/github.com/terraform-providers/terraform-provider-bitbucket`
-
-```sh
-$ mkdir -p $GOPATH/src/github.com/terraform-providers; cd $GOPATH/src/github.com/terraform-providers
-$ git clone git@github.com:terraform-providers/terraform-provider-bitbucket
-```
-
-Enter the provider directory and build the provider
-
-```sh
-$ cd $GOPATH/src/github.com/terraform-providers/terraform-provider-bitbucket
-$ make build
-```
-
-Using the provider
-----------------------
+## Using the provider
 
 ```hcl
 terraform {
   required_providers {
     bitbucket = {
-      source  = "DrFaust92/bitbucket"
-      version = "version-here"
+      source  = "kmaliauka/bitbucket"
+      version = "2.53.1"
     }
   }
 }
 
-# Configure the Bitbucket Provider
+# Atlassian API token with your account email. App passwords stopped working on
+# 2026-06-09; a Bitbucket workspace access token goes in oauth_token instead.
 provider "bitbucket" {
-  username = "GobBluthe"
-  password = "idoillusions" # you can also use app passwords
+  username = "gob@bluth.example.com"
+  password = "ATATT3x..."
 }
 
-# Manage your repository
 resource "bitbucket_repository" "infrastructure" {
   owner = "myteam"
   name  = "terraform-code"
 }
 
-# Manage your project
 resource "bitbucket_project" "infrastructure" {
   owner = "myteam" # must be a team
   name  = "terraform-project"
@@ -63,32 +38,69 @@ resource "bitbucket_project" "infrastructure" {
 }
 ```
 
-Developing the Provider
----------------------------
+Every resource and data source is documented under [`docs/`](docs/).
 
-If you wish to work on the provider, you'll first need [Go](http://www.golang.org) installed on your machine (version 1.11+ is *required*). You'll also need to correctly setup a [GOPATH](http://golang.org/doc/code.html#GOPATH), as well as adding `$GOPATH/bin` to your `$PATH`.
+## What this fork changes
 
-To compile the provider, run `make build`. This will build the provider and put the provider binary in the `$GOPATH/bin` directory.
+**Rate limiting.** A 429 is retried on a gate shared by every in-flight request,
+so parallel resources wait once instead of each rediscovering the limit. Waiting
+is capped, after which the error names the reset time rather than hanging.
+
+**Branch restrictions keep their identity.** Bitbucket generates the numeric id
+of a restriction but enforces uniqueness on kind plus branch pattern. A
+restriction recreated in the UI comes back under a new id; the provider now
+adopts it instead of planning a create that fails with `409 already exists`.
+
+**`bitbucket_workspace_members` exposes `account_id`.** This is the identifier
+the Atlassian Administration API also reports, which makes it possible to join a
+Bitbucket user to their Atlassian account without matching on display names.
+
+**Fixes carried from open upstream pull requests.** `default_branch_deletion`
+returned as a string ([#234](https://github.com/DrFaust92/terraform-provider-bitbucket/issues/234)),
+branch restriction users and groups never reaching state
+([#252](https://github.com/DrFaust92/terraform-provider-bitbucket/pull/252)),
+rate limit retries ([#255](https://github.com/DrFaust92/terraform-provider-bitbucket/pull/255)),
+a nil dereference on transport errors
+([#211](https://github.com/DrFaust92/terraform-provider-bitbucket/issues/211)),
+and deployment variables past the first page being dropped from state
+([#254](https://github.com/DrFaust92/terraform-provider-bitbucket/issues/254)).
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
+
+## Requirements
+
+- [OpenTofu](https://opentofu.org/docs/intro/install/) 1.10+ or Terraform 1.x
+- [Go](https://go.dev/doc/install) 1.25 to build the provider
+
+## Building
 
 ```sh
-$ make build
-...
-$ $GOPATH/bin/terraform-provider-bitbucket
-...
+git clone git@github.com:kmaliauka/terraform-provider-bitbucket.git
+cd terraform-provider-bitbucket
+make build
 ```
 
-In order to test the provider, you can simply run `make test`.
+To run against a local build without publishing, point the CLI at the binary:
+
+```hcl
+# ~/.tofurc  or  ~/.terraformrc
+provider_installation {
+  dev_overrides {
+    "kmaliauka/bitbucket" = "/path/to/terraform-provider-bitbucket/bin"
+  }
+  direct {}
+}
+```
+
+## Testing
 
 ```sh
-$ make test
+make test     # unit tests
+make testacc  # acceptance tests: creates real resources and needs TF_ACC=1
 ```
 
-In order to run the full suite of Acceptance tests, run `make testacc`.
+Acceptance tests talk to a real Bitbucket workspace and can cost money.
 
-*Note:* Terraform needs TF_ACC env variable set to run acceptance tests
+## Releasing
 
-*Note:* Acceptance tests create real resources, and often cost money to run.
-
-```sh
-$ make testacc
-```
+Tagging `v*` builds, signs and publishes a release. See [RELEASING.md](RELEASING.md).

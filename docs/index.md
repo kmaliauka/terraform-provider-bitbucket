@@ -11,6 +11,11 @@ description: |-
 The Bitbucket provider allows you to manage resources including repositories,
 webhooks, and default reviewers.
 
+This is [kmaliauka/bitbucket](https://github.com/kmaliauka/terraform-provider-bitbucket),
+a fork of [DrFaust92/bitbucket](https://github.com/DrFaust92/terraform-provider-bitbucket)
+carrying fixes for rate limiting, branch restriction identity and workspace
+member account ids. See the repository README for the full list.
+
 Use the navigation to the left to read about the available resources.
 
 ## Example Usage
