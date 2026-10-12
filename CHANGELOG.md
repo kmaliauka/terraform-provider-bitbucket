@@ -7,6 +7,8 @@
 
 ### Bug fixes
 
+* `bitbucket_project` and `bitbucket_repository`: create and update send only writable fields. The generated client always serialized read-only keys such as `created_on`, `updated_on` and `type`, which Bitbucket now rejects with `400 extra keys not allowed`, so no new project or repository could be created.
+* API errors include the per-field reasons Bitbucket returns, not only `Bad request`.
 * `bitbucket_branch_restriction`: a restriction deleted and recreated outside Terraform is re-adopted under its new id instead of being planned for creation. Bitbucket keys a restriction by kind together with pattern (or branch type), not by id, and rejects a duplicate with `409 ... already exists (id=...)`, so the previous behaviour produced a plan that could not be applied.
 * `bitbucket_branch_restriction`: creating a restriction that already exists now reports the existing id and the import command instead of surfacing the raw conflict. The existing restriction is resolved by its natural key, falling back to the id quoted in the conflict message only when that lookup finds nothing.
 * `bitbucket_branch_restriction`: destroying a restriction whose id changed outside Terraform no longer reports success while leaving the restriction in place. `Update` recovers the same way, which matters when running with `-refresh=false`.

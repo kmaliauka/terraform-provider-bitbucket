@@ -14,7 +14,8 @@ import (
 // Error represents a error from the bitbucket api.
 type Error struct {
 	APIError struct {
-		Message string `json:"message,omitempty"`
+		Message string                 `json:"message,omitempty"`
+		Fields  map[string]interface{} `json:"fields,omitempty"`
 	} `json:"error,omitempty"`
 	Type       string `json:"type,omitempty"`
 	StatusCode int
@@ -22,6 +23,9 @@ type Error struct {
 }
 
 func (e Error) Error() string {
+	if len(e.APIError.Fields) > 0 {
+		return fmt.Sprintf("API Error: %d %s %s %v", e.StatusCode, e.Endpoint, e.APIError.Message, e.APIError.Fields)
+	}
 	return fmt.Sprintf("API Error: %d %s %s", e.StatusCode, e.Endpoint, e.APIError.Message)
 }
 

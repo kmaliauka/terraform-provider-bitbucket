@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/DrFaust92/bitbucket-go-client"
-	"github.com/antihax/optional"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
@@ -178,7 +177,6 @@ func newRepositoryFromResource(d *schema.ResourceData) *bitbucket.Repository {
 
 func resourceRepositoryUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	c := m.(Clients).genClient
-	repoApi := c.ApiClient.RepositoriesApi
 	pipeApi := c.ApiClient.PipelinesApi
 	client := m.(Clients).httpClient
 
@@ -191,13 +189,14 @@ func resourceRepositoryUpdate(ctx context.Context, d *schema.ResourceData, m int
 	workspace := d.Get("owner").(string)
 
 	if d.HasChangesExcept("pipelines_enabled", "inherit_default_merge_strategy", "inherit_branching_model") {
-		repository := newRepositoryFromResource(d)
-
-		repoBody := &bitbucket.RepositoriesApiRepositoriesWorkspaceRepoSlugPutOpts{
-			Body: optional.NewInterface(repository),
+		payload, err := repositoryRequestBody(d)
+		if err != nil {
+			return diag.FromErr(err)
 		}
-		_, res, err := repoApi.RepositoriesWorkspaceRepoSlugPut(c.AuthContext, repoSlug, workspace, repoBody)
-		if err := handleClientError(res, err); err != nil {
+
+		log.Printf("[DEBUG] Repository Update Body: %s", payload.String())
+
+		if _, err := client.Put(fmt.Sprintf("2.0/repositories/%s/%s", workspace, repoSlug), payload); err != nil {
 			return diag.FromErr(err)
 		}
 	}
@@ -254,11 +253,8 @@ func resourceRepositoryUpdate(ctx context.Context, d *schema.ResourceData, m int
 
 func resourceRepositoryCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	c := m.(Clients).genClient
-	repoApi := c.ApiClient.RepositoriesApi
 	pipeApi := c.ApiClient.PipelinesApi
 	client := m.(Clients).httpClient
-
-	repo := newRepositoryFromResource(d)
 
 	var repoSlug string
 	repoSlug = d.Get("slug").(string)
@@ -269,12 +265,14 @@ func resourceRepositoryCreate(ctx context.Context, d *schema.ResourceData, m int
 
 	workspace := d.Get("owner").(string)
 
-	repoBody := &bitbucket.RepositoriesApiRepositoriesWorkspaceRepoSlugPostOpts{
-		Body: optional.NewInterface(repo),
+	payload, err := repositoryRequestBody(d)
+	if err != nil {
+		return diag.FromErr(err)
 	}
 
-	_, res, err := repoApi.RepositoriesWorkspaceRepoSlugPost(c.AuthContext, repoSlug, workspace, repoBody)
-	if err := handleClientError(res, err); err != nil {
+	log.Printf("[DEBUG] Repository Create Body: %s", payload.String())
+
+	if _, err := client.Post(fmt.Sprintf("2.0/repositories/%s/%s", workspace, repoSlug), payload); err != nil {
 		return diag.FromErr(err)
 	}
 

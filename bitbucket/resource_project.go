@@ -90,26 +90,8 @@ func resourceProject() *schema.Resource {
 // 	Links *bitbucket.ProjectLinks `json:"links,omitempty"`
 // }
 
-func newProjectFromResource(d *schema.ResourceData) *bitbucket.Project {
-	project := &bitbucket.Project{
-		Name:        d.Get("name").(string),
-		IsPrivate:   d.Get("is_private").(bool),
-		Description: d.Get("description").(string),
-		Key:         d.Get("key").(string),
-	}
-
-	if v, ok := d.GetOk("link"); d.IsNewResource() && ok && len(v.([]interface{})) > 0 && v.([]interface{}) != nil {
-		project.Links = expandProjectLinks(v.([]interface{}))
-	}
-
-	return project
-}
-
 func resourceProjectUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c := m.(Clients).genClient
-	// client := m.(Clients).httpClient
-	projectApi := c.ApiClient.ProjectsApi
-	project := newProjectFromResource(d)
+	client := m.(Clients).httpClient
 
 	var projectKey string
 	projectKey = d.Get("key").(string)
@@ -118,15 +100,16 @@ func resourceProjectUpdate(ctx context.Context, d *schema.ResourceData, m interf
 		projectKey = d.Get("key").(string)
 	}
 
-	log.Printf("[DEBUG] Project Update Body: %#v", project)
-	project.Links = nil
-
-	prj, res, err := projectApi.WorkspacesWorkspaceProjectsProjectKeyPut(c.AuthContext, *project, projectKey, d.Get("owner").(string))
-	if err := handleClientError(res, err); err != nil {
+	payload, err := projectRequestBody(d, false)
+	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	log.Printf("[DEBUG] Project Update Res: %#v", prj)
+	log.Printf("[DEBUG] Project Update Body: %s", payload.String())
+
+	if _, err := client.Put(fmt.Sprintf("2.0/workspaces/%s/projects/%s", d.Get("owner").(string), projectKey), payload); err != nil {
+		return diag.FromErr(err)
+	}
 
 	// if d.HasChange("link") {
 	// 	if v, ok := d.GetOk("link"); ok && len(v.([]interface{})) > 0 && v.([]interface{}) != nil {
@@ -157,20 +140,22 @@ func resourceProjectUpdate(ctx context.Context, d *schema.ResourceData, m interf
 }
 
 func resourceProjectCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c := m.(Clients).genClient
-	projectApi := c.ApiClient.ProjectsApi
-	project := newProjectFromResource(d)
-
+	client := m.(Clients).httpClient
 	owner := d.Get("owner").(string)
+	key := d.Get("key").(string)
 
-	log.Printf("[DEBUG] Project Create Body: %#v", project)
-
-	projRes, res, err := projectApi.WorkspacesWorkspaceProjectsPost(c.AuthContext, *project, owner)
-	if err := handleClientError(res, err); err != nil {
+	payload, err := projectRequestBody(d, true)
+	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	d.SetId(fmt.Sprintf("%s/%s", owner, projRes.Key))
+	log.Printf("[DEBUG] Project Create Body: %s", payload.String())
+
+	if _, err := client.Post(fmt.Sprintf("2.0/workspaces/%s/projects", owner), payload); err != nil {
+		return diag.FromErr(err)
+	}
+
+	d.SetId(fmt.Sprintf("%s/%s", owner, key))
 
 	return resourceProjectRead(ctx, d, m)
 }
@@ -236,26 +221,6 @@ func resourceProjectDelete(ctx context.Context, d *schema.ResourceData, m interf
 	}
 
 	return nil
-}
-
-func expandProjectLinks(l []interface{}) *bitbucket.ProjectLinks {
-	if len(l) == 0 || l[0] == nil {
-		return nil
-	}
-
-	tfMap, ok := l[0].(map[string]interface{})
-
-	if !ok {
-		return nil
-	}
-
-	rp := &bitbucket.ProjectLinks{}
-
-	if v, ok := tfMap["avatar"].([]interface{}); ok && len(v) > 0 {
-		rp.Avatar = expandLink(v)
-	}
-
-	return rp
 }
 
 func flattenProjectLinks(rp *bitbucket.ProjectLinks) []interface{} {
