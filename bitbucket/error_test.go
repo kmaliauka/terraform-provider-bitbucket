@@ -1,6 +1,7 @@
 package bitbucket
 
 import (
+	"errors"
 	"net/http"
 	"testing"
 )
@@ -71,5 +72,17 @@ func TestHandleClientErrorExplainsRateLimit(t *testing.T) {
 	want := "429 Too Many Requests: rate limit exceeded, resets in 156s; reduce -parallelism or re-run after the window resets"
 	if err.Error() != want {
 		t.Fatalf("error = %q, want %q", err, want)
+	}
+}
+
+func TestHandleClientErrorReturnsTransportError(t *testing.T) {
+	want := errors.New("read tcp: connection reset by peer")
+
+	if err := handleClientError(nil, want); !errors.Is(err, want) {
+		t.Fatalf("error = %v, want %v", err, want)
+	}
+
+	if err := handleClientError(nil, nil); err != nil {
+		t.Fatalf("error = %v, want nil", err)
 	}
 }

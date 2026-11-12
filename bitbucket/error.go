@@ -25,7 +25,12 @@ func handleClientError(httpResponse *http.Response, err error) error {
 		return fmt.Errorf("%s: %s", oauthError.Response.Status, oauthError.ErrorDescription)
 	}
 
-	if httpResponse == nil || httpResponse.StatusCode < 400 {
+	// No response means the request failed in transport; callers read the response next.
+	if httpResponse == nil {
+		return err
+	}
+
+	if httpResponse.StatusCode < 400 {
 		return nil
 	}
 

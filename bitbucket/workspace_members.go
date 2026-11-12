@@ -2,6 +2,8 @@ package bitbucket
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/DrFaust92/bitbucket-go-client"
@@ -18,10 +20,15 @@ import (
 type workspaceMemberCache struct {
 	mu      sync.Mutex
 	indexes map[string]map[string]string
+	// Display names several members share, per workspace; they are left out of the index.
+	duplicates map[string]map[string][]string
 }
 
 func newWorkspaceMemberCache() *workspaceMemberCache {
-	return &workspaceMemberCache{indexes: map[string]map[string]string{}}
+	return &workspaceMemberCache{
+		indexes:    map[string]map[string]string{},
+		duplicates: map[string]map[string][]string{},
+	}
 }
 
 // uuidsByDisplayName returns the workspace's index, fetching it at most once.
@@ -36,6 +43,7 @@ func (c *workspaceMemberCache) uuidsByDisplayName(pc ProviderConfig, workspace s
 	}
 
 	index := map[string]string{}
+	duplicates := map[string][]string{}
 	options := bitbucket.WorkspacesApiWorkspacesWorkspaceMembersGetOpts{}
 
 	// The page number is tracked here rather than read back from the response,
@@ -51,14 +59,22 @@ func (c *workspaceMemberCache) uuidsByDisplayName(pc ProviderConfig, workspace s
 				continue
 			}
 
-			name := member.User.DisplayName
-			if existing, ok := index[name]; ok && existing != member.User.Uuid {
-				return nil, fmt.Errorf(
-					"workspace %q has more than one member named %q (%s and %s); use the account UUID instead",
-					workspace, name, existing, member.User.Uuid)
+			name, uuid := member.User.DisplayName, member.User.Uuid
+
+			if uuids, ok := duplicates[name]; ok {
+				if !slices.Contains(uuids, uuid) {
+					duplicates[name] = append(uuids, uuid)
+				}
+				continue
 			}
 
-			index[name] = member.User.Uuid
+			if existing, ok := index[name]; ok && existing != uuid {
+				duplicates[name] = []string{existing, uuid}
+				delete(index, name)
+				continue
+			}
+
+			index[name] = uuid
 		}
 
 		if members.Next == "" {
@@ -69,8 +85,17 @@ func (c *workspaceMemberCache) uuidsByDisplayName(pc ProviderConfig, workspace s
 	}
 
 	c.indexes[workspace] = index
+	c.duplicates[workspace] = duplicates
 
 	return index, nil
+}
+
+// sharedDisplayName returns the accounts behind a display name several members share.
+func (c *workspaceMemberCache) sharedDisplayName(workspace, name string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.duplicates[workspace][name]
 }
 
 // resolve maps configured user identifiers onto accounts the API accepts. A
@@ -102,6 +127,12 @@ func (c *workspaceMemberCache) resolve(pc ProviderConfig, workspace string, name
 
 		uuid, ok := index[name]
 		if !ok {
+			if uuids := c.sharedDisplayName(workspace, name); len(uuids) > 0 {
+				return nil, fmt.Errorf(
+					"workspace %q has more than one member named %q (%s); use the account UUID instead",
+					workspace, name, strings.Join(uuids, ", "))
+			}
+
 			return nil, fmt.Errorf("no member of workspace %q has the display name %q", workspace, name)
 		}
 

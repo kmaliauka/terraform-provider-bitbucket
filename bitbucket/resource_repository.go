@@ -378,7 +378,7 @@ func resourceRepositoryRead(ctx context.Context, d *schema.ResourceData, m inter
 	d.Set("link", flattenLinks(repoRes.Links))
 
 	pipelinesConfigReq, res, err := pipeApi.GetRepositoryPipelineConfig(c.AuthContext, workspace, repoSlug)
-	if err := handleClientError(res, err); err != nil && res.StatusCode != http.StatusNotFound {
+	if err := handleClientError(res, err); err != nil && (res == nil || res.StatusCode != http.StatusNotFound) {
 		return diag.FromErr(err)
 	}
 

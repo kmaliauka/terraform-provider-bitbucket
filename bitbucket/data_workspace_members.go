@@ -123,7 +123,12 @@ func dataReadWorkspaceMembers(ctx context.Context, d *schema.ResourceData, m int
 			users = append(users, *member.User)
 		}
 
-		endpoint = nextPageEndpoint(page.Next)
+		next := nextPageEndpoint(page.Next)
+		if next == endpoint {
+			return diag.Errorf("error reading members of workspace (%s): pagination link %q repeats", workspace, next)
+		}
+
+		endpoint = next
 	}
 
 	log.Printf("[DEBUG] Workspace (%s) has %d members", workspace, len(users))

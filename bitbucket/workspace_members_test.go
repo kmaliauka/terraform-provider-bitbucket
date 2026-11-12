@@ -102,22 +102,36 @@ func TestWorkspaceMemberCacheFetchesOnceUnderConcurrency(t *testing.T) {
 	}
 }
 
-func TestWorkspaceMemberCacheRejectsDuplicateDisplayNames(t *testing.T) {
+func TestWorkspaceMemberCacheRejectsOnlyTheSharedDisplayName(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"page":1,"values":[
 			{"user":{"uuid":"{u1}","display_name":"Jane Doe"}},
-			{"user":{"uuid":"{u2}","display_name":"Jane Doe"}}
+			{"user":{"uuid":"{u2}","display_name":"Jane Doe"}},
+			{"user":{"uuid":"{u3}","display_name":"John Roe"}}
 		]}`)
 	}))
 	defer srv.Close()
 
-	_, err := newWorkspaceMemberCache().uuidsByDisplayName(testProviderConfig(t, srv.URL), "noogadev")
-	if err == nil {
-		t.Fatal("expected an error for ambiguous display names")
+	cache := newWorkspaceMemberCache()
+	pc := testProviderConfig(t, srv.URL)
+
+	accounts, err := cache.resolve(pc, "noogadev", schema.NewSet(schema.HashString, []interface{}{"John Roe"}))
+	if err != nil {
+		t.Fatalf("a unique name must resolve next to a shared one: %v", err)
 	}
-	if !strings.Contains(err.Error(), "Jane Doe") {
-		t.Fatalf("error should name the ambiguous member, got %q", err)
+	if len(accounts) != 1 || accounts[0].Uuid != "{u3}" {
+		t.Fatalf("accounts = %v, want {u3}", accounts)
+	}
+
+	_, err = cache.resolve(pc, "noogadev", schema.NewSet(schema.HashString, []interface{}{"Jane Doe"}))
+	if err == nil {
+		t.Fatal("expected an error for a shared display name")
+	}
+	for _, want := range []string{"Jane Doe", "{u1}", "{u2}"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error should name %s, got %q", want, err)
+		}
 	}
 }
 

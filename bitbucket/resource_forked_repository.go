@@ -223,7 +223,7 @@ func resourceForkedRepositoryCreate(ctx context.Context, d *schema.ResourceData,
 	//nolint:all
 	retryErr := resource.RetryContext(ctx, d.Timeout(schema.TimeoutCreate), func() *resource.RetryError {
 		_, pipelineResponse, err := pipeApi.UpdateRepositoryPipelineConfig(c.AuthContext, *pipelinesConfig, workspace, repoSlug)
-		if pipelineResponse.StatusCode == 403 || pipelineResponse.StatusCode == 404 {
+		if pipelineResponse != nil && (pipelineResponse.StatusCode == 403 || pipelineResponse.StatusCode == 404) {
 			return resource.RetryableError(
 				fmt.Errorf("permissions error setting Pipelines config, retrying"),
 			)
@@ -312,7 +312,7 @@ func resourceForkedRepositoryRead(ctx context.Context, d *schema.ResourceData, m
 	d.Set("link", flattenLinks(repoRes.Links))
 
 	pipelinesConfigReq, res, err := pipeApi.GetRepositoryPipelineConfig(c.AuthContext, workspace, repoSlug)
-	if err := handleClientError(res, err); err != nil && res.StatusCode != http.StatusNotFound {
+	if err := handleClientError(res, err); err != nil && (res == nil || res.StatusCode != http.StatusNotFound) {
 		return diag.FromErr(err)
 	}
 
