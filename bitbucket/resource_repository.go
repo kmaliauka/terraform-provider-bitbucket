@@ -278,9 +278,9 @@ func resourceRepositoryCreate(ctx context.Context, d *schema.ResourceData, m int
 
 	d.SetId(fmt.Sprintf("%s/%s", d.Get("owner").(string), repoSlug))
 
-	// nolint:staticcheck
-	if v, ok := d.GetOkExists("pipelines_enabled"); ok {
-		pipelinesConfig := &bitbucket.PipelinesConfig{Enabled: v.(bool)}
+	// A new repository has Pipelines off, and the config endpoint answers 404 in a workspace that never enabled them.
+	if d.Get("pipelines_enabled").(bool) {
+		pipelinesConfig := &bitbucket.PipelinesConfig{Enabled: true}
 
 		_, res, err := pipeApi.UpdateRepositoryPipelineConfig(c.AuthContext, *pipelinesConfig, workspace, repoSlug)
 		if err := handleClientError(res, err); err != nil {

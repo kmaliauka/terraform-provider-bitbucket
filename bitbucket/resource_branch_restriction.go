@@ -328,7 +328,7 @@ func resourceBranchRestrictionsCreate(ctx context.Context, d *schema.ResourceDat
 	repo := d.Get("repository").(string)
 	workspace := d.Get("owner").(string)
 
-	users, err := m.(Clients).members.resolve(c, workspace, d.Get("users").(*schema.Set))
+	users, err := m.(Clients).members.resolve(m.(Clients), workspace, d.Get("users").(*schema.Set))
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -489,7 +489,7 @@ func resourceBranchRestrictionsUpdate(ctx context.Context, d *schema.ResourceDat
 	c := m.(Clients).genClient
 	brApi := c.ApiClient.BranchRestrictionsApi
 
-	users, err := m.(Clients).members.resolve(c, d.Get("owner").(string), d.Get("users").(*schema.Set))
+	users, err := m.(Clients).members.resolve(m.(Clients), d.Get("owner").(string), d.Get("users").(*schema.Set))
 	if err != nil {
 		return diag.FromErr(err)
 	}

@@ -29,45 +29,30 @@ func testProviderConfig(t *testing.T, baseURL string) ProviderConfig {
 }
 
 func TestWorkspaceMemberCachePaginatesAndCaches(t *testing.T) {
-	var calls atomic.Int32
+	rt := &cursorPagesTransport{pages: map[string]string{
+		"/2.0/workspaces/noogadev/members":               `{"values":[{"user":{"uuid":"{u1}","display_name":"Jane Doe"}}],"next":"https://api.bitbucket.org/2.0/workspaces/noogadev/members?page=Y3Vyc29y"}`,
+		"/2.0/workspaces/noogadev/members?page=Y3Vyc29y": `{"values":[{"user":{"uuid":"{u2}","display_name":"John Smith"}}]}`,
+	}}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-
-		if r.URL.Query().Get("page") == "2" {
-			_, _ = io.WriteString(w, `{"page":2,"values":[
-				{"user":{"uuid":"{u2}","display_name":"John Smith"}}
-			]}`)
-
-			return
-		}
-
-		_, _ = io.WriteString(w, `{"page":1,"next":"?page=2","values":[
-			{"user":{"uuid":"{u1}","display_name":"Jane Doe"}}
-		]}`)
-	}))
-	defer srv.Close()
-
-	pc := testProviderConfig(t, srv.URL)
+	clients := clientsWithTransport(rt)
 	cache := newWorkspaceMemberCache()
 
-	index, err := cache.uuidsByDisplayName(pc, "noogadev")
+	index, err := cache.uuidsByDisplayName(clients, "noogadev")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("unexpected error: %v (requests: %v)", err, rt.seen)
 	}
 	if index["Jane Doe"] != "{u1}" || index["John Smith"] != "{u2}" {
 		t.Fatalf("index = %+v, want members from both pages", index)
 	}
-	if got := calls.Load(); got != 2 {
-		t.Fatalf("calls = %d, want 2 (both pages fetched)", got)
+	if got := len(rt.seen); got != 2 {
+		t.Fatalf("requests = %v, want 2 (both pages fetched)", rt.seen)
 	}
 
-	if _, err = cache.uuidsByDisplayName(pc, "noogadev"); err != nil {
+	if _, err = cache.uuidsByDisplayName(clients, "noogadev"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := calls.Load(); got != 2 {
-		t.Fatalf("calls = %d, want 2 (the second lookup must come from the cache)", got)
+	if got := len(rt.seen); got != 2 {
+		t.Fatalf("requests = %v, want 2 (the second lookup must come from the cache)", rt.seen)
 	}
 }
 
@@ -81,7 +66,7 @@ func TestWorkspaceMemberCacheFetchesOnceUnderConcurrency(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	pc := testProviderConfig(t, srv.URL)
+	pc := Clients{genClient: testProviderConfig(t, srv.URL)}
 	cache := newWorkspaceMemberCache()
 
 	var wg sync.WaitGroup
@@ -114,7 +99,7 @@ func TestWorkspaceMemberCacheRejectsOnlyTheSharedDisplayName(t *testing.T) {
 	defer srv.Close()
 
 	cache := newWorkspaceMemberCache()
-	pc := testProviderConfig(t, srv.URL)
+	pc := Clients{genClient: testProviderConfig(t, srv.URL)}
 
 	accounts, err := cache.resolve(pc, "noogadev", schema.NewSet(schema.HashString, []interface{}{"John Roe"}))
 	if err != nil {
@@ -144,7 +129,7 @@ func TestWorkspaceMemberCacheResolvesDisplayNames(t *testing.T) {
 
 	names := schema.NewSet(schema.HashString, []interface{}{"Jane Doe"})
 
-	accounts, err := newWorkspaceMemberCache().resolve(testProviderConfig(t, srv.URL), "noogadev", names)
+	accounts, err := newWorkspaceMemberCache().resolve(Clients{genClient: testProviderConfig(t, srv.URL)}, "noogadev", names)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -164,7 +149,7 @@ func TestWorkspaceMemberCacheResolvePassesUUIDsThrough(t *testing.T) {
 
 	names := schema.NewSet(schema.HashString, []interface{}{"{11111111-1111-1111-1111-111111111111}"})
 
-	accounts, err := newWorkspaceMemberCache().resolve(testProviderConfig(t, srv.URL), "noogadev", names)
+	accounts, err := newWorkspaceMemberCache().resolve(Clients{genClient: testProviderConfig(t, srv.URL)}, "noogadev", names)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -182,7 +167,7 @@ func TestWorkspaceMemberCacheReportsUnknownName(t *testing.T) {
 
 	names := schema.NewSet(schema.HashString, []interface{}{"Nobody Here"})
 
-	_, err := newWorkspaceMemberCache().resolve(testProviderConfig(t, srv.URL), "noogadev", names)
+	_, err := newWorkspaceMemberCache().resolve(Clients{genClient: testProviderConfig(t, srv.URL)}, "noogadev", names)
 	if err == nil {
 		t.Fatal("expected an error for an unknown display name")
 	}
@@ -192,7 +177,7 @@ func TestWorkspaceMemberCacheReportsUnknownName(t *testing.T) {
 }
 
 func TestWorkspaceMemberCacheResolveEmptySet(t *testing.T) {
-	accounts, err := newWorkspaceMemberCache().resolve(ProviderConfig{}, "noogadev", schema.NewSet(schema.HashString, nil))
+	accounts, err := newWorkspaceMemberCache().resolve(Clients{}, "noogadev", schema.NewSet(schema.HashString, nil))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
