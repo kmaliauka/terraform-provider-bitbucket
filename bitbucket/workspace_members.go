@@ -2,12 +2,12 @@ package bitbucket
 
 import (
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
 
 	"github.com/DrFaust92/bitbucket-go-client"
-	"github.com/antihax/optional"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
@@ -34,7 +34,7 @@ func newWorkspaceMemberCache() *workspaceMemberCache {
 // uuidsByDisplayName returns the workspace's index, fetching it at most once.
 // The lock is held across the fetch so concurrent resources wait for a single
 // walk instead of each starting their own.
-func (c *workspaceMemberCache) uuidsByDisplayName(pc ProviderConfig, workspace string) (map[string]string, error) {
+func (c *workspaceMemberCache) uuidsByDisplayName(clients Clients, workspace string) (map[string]string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -46,10 +46,20 @@ func (c *workspaceMemberCache) uuidsByDisplayName(pc ProviderConfig, workspace s
 	duplicates := map[string][]string{}
 	options := bitbucket.WorkspacesApiWorkspacesWorkspaceMembersGetOpts{}
 
-	// The page number is tracked here rather than read back from the response,
-	// which omits it on some payloads and would otherwise loop forever.
-	for page := int32(1); ; page++ {
-		members, res, err := pc.ApiClient.WorkspacesApi.WorkspacesWorkspaceMembersGet(pc.AuthContext, workspace, &options)
+	// Later pages are read from the link the API returns: it pages with opaque cursors, not page numbers.
+	next := ""
+	for {
+		var (
+			members bitbucket.PaginatedWorkspaceMemberships
+			res     *http.Response
+			err     error
+		)
+		if next == "" {
+			pc := clients.genClient
+			members, res, err = pc.ApiClient.WorkspacesApi.WorkspacesWorkspaceMembersGet(pc.AuthContext, workspace, &options)
+		} else {
+			res, err = clients.httpClient.GetNext(next, &members)
+		}
 		if err := handleClientError(res, err); err != nil {
 			return nil, fmt.Errorf("listing members of workspace %q: %w", workspace, err)
 		}
@@ -80,8 +90,10 @@ func (c *workspaceMemberCache) uuidsByDisplayName(pc ProviderConfig, workspace s
 		if members.Next == "" {
 			break
 		}
-
-		options.Page = optional.NewInt32(page + 1)
+		if members.Next == next {
+			return nil, fmt.Errorf("listing members of workspace %q: pagination link %q repeats", workspace, next)
+		}
+		next = members.Next
 	}
 
 	c.indexes[workspace] = index
@@ -101,7 +113,7 @@ func (c *workspaceMemberCache) sharedDisplayName(workspace, name string) []strin
 // resolve maps configured user identifiers onto accounts the API accepts. A
 // UUID is passed through untouched, so no lookup is needed for configurations
 // that already use them.
-func (c *workspaceMemberCache) resolve(pc ProviderConfig, workspace string, names *schema.Set) ([]bitbucket.Account, error) {
+func (c *workspaceMemberCache) resolve(clients Clients, workspace string, names *schema.Set) ([]bitbucket.Account, error) {
 	if names == nil || names.Len() == 0 {
 		return nil, nil
 	}
@@ -120,7 +132,7 @@ func (c *workspaceMemberCache) resolve(pc ProviderConfig, workspace string, name
 
 		if index == nil {
 			var err error
-			if index, err = c.uuidsByDisplayName(pc, workspace); err != nil {
+			if index, err = c.uuidsByDisplayName(clients, workspace); err != nil {
 				return nil, err
 			}
 		}

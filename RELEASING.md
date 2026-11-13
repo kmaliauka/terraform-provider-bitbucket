@@ -5,9 +5,11 @@ Fork of `DrFaust92/terraform-provider-bitbucket`, published from
 
 ## Versioning
 
-The fork releases as `2.53.0`, `2.53.1`, and so on: upstream is at `2.52.0`, so
-this reads as "one minor ahead of the base it was cut from" and leaves the whole
-`2.52.x` line to upstream.
+The fork releases as `2.53.0`, `2.53.1`, and so on, a line of its own that started
+one minor ahead of the upstream `2.52.0` it was cut from. Upstream has since
+released `2.53.0` and later under its own namespace, so the numbers no longer
+compare across the two: a fork version says nothing about which upstream changes
+it contains, `CHANGELOG.md` does.
 
 Do **not** use a prerelease tag such as `2.52.0-noogadev.1`. It is valid semver,
 but OpenTofu will not select a prerelease under an ordinary constraint like
